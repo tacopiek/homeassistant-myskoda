@@ -409,14 +409,15 @@ class AuxiliaryHeater(MySkodaClimateEntity):
 
     @property
     def _state(self) -> str | None:
-        state = None
         if self.has_all_capabilities([CapabilityId.AUXILIARY_HEATING]):
             if ac := self._auxiliary_heating():
-                state = ac.state
+                return ac.state
         else:
-            if ac := self._air_conditioning():
-                state = ac.state
-        return state
+            # For ACTIVE_VENTILATION-only vehicles the state may be in either source
+            for source in [self._air_conditioning(), self._auxiliary_heating()]:
+                if source and source.state:
+                    return source.state
+        return None
 
     @property
     def hvac_modes(self) -> list[HVACMode]:  # noqa: D102

@@ -841,11 +841,12 @@ class VentilationTimeLeft(MySkodaSensor):
 
     @property
     def native_value(self) -> int | None:  # noqa: D102
-        if _ac := self.vehicle.air_conditioning:
-            if target_datetime := _ac.estimated_date_time_to_reach_target_temperature:
-                now = datetime.now(UTC)
-                duration = target_datetime - now
-                return max(0, int(duration.total_seconds()))
+        for source in [self.vehicle.auxiliary_heating, self.vehicle.air_conditioning]:
+            if source:
+                if target_datetime := source.estimated_date_time_to_reach_target_temperature:
+                    now = datetime.now(UTC)
+                    duration = target_datetime - now
+                    return max(0, int(duration.total_seconds()))
 
     def required_capabilities(self) -> list[CapabilityId]:
         return [CapabilityId.ACTIVE_VENTILATION]
