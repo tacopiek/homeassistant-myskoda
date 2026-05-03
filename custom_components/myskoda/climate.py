@@ -179,6 +179,22 @@ class MySkodaClimateEntity(MySkodaEntity, ClimateEntity):
         finally:
             self._operation_in_progress = False
 
+    async def _start_ventilation(self) -> None:
+        self._ensure_not_readonly()
+        self._operation_in_progress = True
+        try:
+            await self.coordinator.myskoda.start_ventilation(self.vehicle.info.vin)
+        finally:
+            self._operation_in_progress = False
+
+    async def _stop_ventilation(self) -> None:
+        self._ensure_not_readonly()
+        self._operation_in_progress = True
+        try:
+            await self.coordinator.myskoda.stop_ventilation(self.vehicle.info.vin)
+        finally:
+            self._operation_in_progress = False
+
 
 class MySkodaClimate(MySkodaClimateEntity):
     """Climate control for MySkoda vehicles."""
@@ -316,7 +332,11 @@ class AuxiliaryHeater(MySkodaClimateEntity):
             coordinator,
             vin,
         )
-        self._is_enabled: bool = bool(self.coordinator.entry.options.get(CONF_SPIN))
+        # ACTIVE_VENTILATION-only vehicles don't need a S-PIN
+        self._is_enabled: bool = (
+            bool(self.coordinator.entry.options.get(CONF_SPIN))
+            or self._is_active_ventilation_only()
+        )
         self._attr_supported_features = (
             ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
         )
@@ -327,6 +347,17 @@ class AuxiliaryHeater(MySkodaClimateEntity):
             ]
         ):
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+
+    def _is_active_ventilation_only(self) -> bool:
+        """Return True for vehicles that support ventilation but not auxiliary heating."""
+        return self.has_any_capability([CapabilityId.ACTIVE_VENTILATION]) and not (
+            self.has_any_capability(
+                [
+                    CapabilityId.AUXILIARY_HEATING,
+                    CapabilityId.AIR_CONDITIONING_HEATING_SOURCE_AUXILIARY,
+                ]
+            )
+        )
 
     def _auxiliary_heating(self) -> AuxiliaryHeating | None:
         return self.vehicle.auxiliary_heating
@@ -389,7 +420,9 @@ class AuxiliaryHeater(MySkodaClimateEntity):
 
     @property
     def hvac_modes(self) -> list[HVACMode]:  # noqa: D102
-        modes = [HVACMode.HEAT, HVACMode.OFF]
+        modes = [HVACMode.OFF]
+        if not self._is_active_ventilation_only():
+            modes.append(HVACMode.HEAT)
         if self.has_any_capability(
             [CapabilityId.ACTIVE_VENTILATION, CapabilityId.AUXILIARY_HEATING_BASIC]
         ):
@@ -479,14 +512,32 @@ class AuxiliaryHeater(MySkodaClimateEntity):
             )
 
         elif hvac_mode == HVACMode.FAN_ONLY:
-            await handle_mode(
-                desired_state=AirConditioningState.VENTILATION,
-                start_mode=AuxiliaryStartMode.VENTILATION,
-            )
+            if self._is_active_ventilation_only():
+                if state == AirConditioningState.VENTILATION:
+                    _LOGGER.info("Ventilation already running.")
+                else:
+                    _LOGGER.info("Starting ventilation.")
+                    try:
+                        await self._start_ventilation()
+                    except (ClientResponseError, OperationFailedError) as exc:
+                        self._unset_optimistic_data(OptimisticAttribute.HVAC_MODE)
+                        _LOGGER.error("Failed to start ventilation: %s", exc)
+            else:
+                await handle_mode(
+                    desired_state=AirConditioningState.VENTILATION,
+                    start_mode=AuxiliaryStartMode.VENTILATION,
+                )
 
         else:
             if state == AirConditioningState.OFF:
                 _LOGGER.info("Auxiliary heater already OFF.")
+            elif self._is_active_ventilation_only():
+                _LOGGER.info("Stopping ventilation.")
+                try:
+                    await self._stop_ventilation()
+                except (ClientResponseError, OperationFailedError) as exc:
+                    self._unset_optimistic_data(OptimisticAttribute.HVAC_MODE)
+                    _LOGGER.error("Failed to stop ventilation: %s", exc)
             else:
                 _LOGGER.info("Stopping Auxiliary heater.")
                 try:
@@ -497,7 +548,10 @@ class AuxiliaryHeater(MySkodaClimateEntity):
         _LOGGER.info("Auxiliary HVAC mode set to %s.", hvac_mode)
 
     async def async_turn_on(self):  # noqa: D102
-        await self.async_set_hvac_mode(HVACMode.HEAT)
+        if self._is_active_ventilation_only():
+            await self.async_set_hvac_mode(HVACMode.FAN_ONLY)
+        else:
+            await self.async_set_hvac_mode(HVACMode.HEAT)
 
     async def async_turn_off(self):  # noqa: D102
         await self.async_set_hvac_mode(HVACMode.OFF)
@@ -508,5 +562,6 @@ class AuxiliaryHeater(MySkodaClimateEntity):
             [
                 CapabilityId.AUXILIARY_HEATING,
                 CapabilityId.AIR_CONDITIONING_HEATING_SOURCE_AUXILIARY,
+                CapabilityId.ACTIVE_VENTILATION,
             ]
         )
