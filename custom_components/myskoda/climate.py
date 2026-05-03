@@ -434,24 +434,28 @@ class AuxiliaryHeater(MySkodaClimateEntity):
         if hvac_mode := self._optimistic_data.get(OptimisticAttribute.HVAC_MODE):
             return hvac_mode
 
-        if state := self._state:
-            if state == AuxiliaryState.HEATING_AUXILIARY:
-                return HVACMode.HEAT
-            if state == AuxiliaryState.VENTILATION:
-                return HVACMode.FAN_ONLY
-            return HVACMode.OFF
+        state = self._state
+        if not state:
+            return HVACMode.OFF if self._is_active_ventilation_only() else None
+        if state == AuxiliaryState.HEATING_AUXILIARY:
+            return HVACMode.HEAT
+        if state == AuxiliaryState.VENTILATION:
+            return HVACMode.FAN_ONLY
+        return HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | None:  # noqa: D102
         if hvac_action := self._optimistic_data.get(OptimisticAttribute.HVAC_ACTION):
             return hvac_action
 
-        if state := self._state:
-            if state == AuxiliaryState.HEATING_AUXILIARY:
-                return HVACAction.HEATING
-            if state == AuxiliaryState.VENTILATION:
-                return HVACAction.FAN
-            return HVACAction.OFF
+        state = self._state
+        if not state:
+            return HVACAction.OFF if self._is_active_ventilation_only() else None
+        if state == AuxiliaryState.HEATING_AUXILIARY:
+            return HVACAction.HEATING
+        if state == AuxiliaryState.VENTILATION:
+            return HVACAction.FAN
+        return HVACAction.OFF
 
     @property
     def target_temperature(self) -> None | float:  # noqa: D102
@@ -465,9 +469,12 @@ class AuxiliaryHeater(MySkodaClimateEntity):
 
     @Throttle(timedelta(seconds=API_COOLDOWN_IN_SECONDS))
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):  # noqa: D102
-        if not (state := self._state):
-            _LOGGER.error("Can't retrieve air-conditioning info")
-            return
+        state = self._state
+        if not state:
+            if not self._is_active_ventilation_only():
+                _LOGGER.error("Can't retrieve air-conditioning info")
+                return
+            state = AirConditioningState.OFF
 
         self._set_optimistic_data(OptimisticAttribute.HVAC_MODE, hvac_mode)
 
