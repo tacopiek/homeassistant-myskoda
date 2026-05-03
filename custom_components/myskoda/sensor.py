@@ -1,5 +1,6 @@
 """Sensors for the MySkoda integration."""
 
+import logging
 from datetime import UTC, datetime
 from math import isnan
 
@@ -34,6 +35,8 @@ from .const import COORDINATORS, DOMAIN, OUTSIDE_TEMP_MAX_BOUND, OUTSIDE_TEMP_MI
 from .coordinator import MySkodaConfigEntry
 from .entity import MySkodaEntity
 from .utils import add_supported_entities
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -841,6 +844,11 @@ class VentilationTimeLeft(MySkodaSensor):
 
     @property
     def native_value(self) -> int | None:  # noqa: D102
+        _LOGGER.debug(
+            "VentilationTimeLeft: air_conditioning=%s, auxiliary_heating=%s",
+            vars(self.vehicle.air_conditioning) if self.vehicle.air_conditioning else None,
+            vars(self.vehicle.auxiliary_heating) if self.vehicle.auxiliary_heating else None,
+        )
         for source in [self.vehicle.auxiliary_heating, self.vehicle.air_conditioning]:
             if source:
                 if target_datetime := source.estimated_date_time_to_reach_target_temperature:
