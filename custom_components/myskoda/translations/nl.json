@@ -149,6 +149,9 @@
             "aux_estimated_time_left_to_reach_target_temperature": {
                 "name": "Tijd om de gewenste temperatuur te bereiken"
             },
+            "ventilation_time_left": {
+                "name": "Resterende ventilatietijd"
+            },
             "battery_percentage": {
                 "name": "Accupercentage"
             },

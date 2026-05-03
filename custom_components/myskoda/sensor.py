@@ -71,6 +71,7 @@ async def async_setup_entry(
             TargetBatteryPercentage,
             ClimatisationTimeLeft,
             AuxHeaterTimeLeft,
+            VentilationTimeLeft,
             OverallMileage,
             OverallTravelTime,
             OverallAverageSpeed,
@@ -825,6 +826,29 @@ class AuxHeaterTimeLeft(MySkodaSensor):
 
     def required_capabilities(self) -> list[CapabilityId]:
         return [CapabilityId.AUXILIARY_HEATING]
+
+
+class VentilationTimeLeft(MySkodaSensor):
+    """Estimated time left for active ventilation."""
+
+    entity_description = SensorEntityDescription(
+        key="ventilation_time_left",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_unit_of_measurement=UnitOfTime.MINUTES,
+        translation_key="ventilation_time_left",
+    )
+
+    @property
+    def native_value(self) -> int | None:  # noqa: D102
+        if _ac := self.vehicle.air_conditioning:
+            if target_datetime := _ac.estimated_date_time_to_reach_target_temperature:
+                now = datetime.now(UTC)
+                duration = target_datetime - now
+                return max(0, int(duration.total_seconds()))
+
+    def required_capabilities(self) -> list[CapabilityId]:
+        return [CapabilityId.ACTIVE_VENTILATION]
 
 
 class TripStatisticSensor(MySkodaSensor):

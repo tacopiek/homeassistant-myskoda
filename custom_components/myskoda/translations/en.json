@@ -150,6 +150,9 @@
             "aux_estimated_time_left_to_reach_target_temperature": {
                 "name": "Heater Time to reach target temperature"
             },
+            "ventilation_time_left": {
+                "name": "Ventilation Time Left"
+            },
             "battery_percentage": {
                 "name": "Battery Percentage"
             },
